@@ -148,7 +148,8 @@ private val CardBorder = Color(0xFFE8ECE7)
 
 private enum class Page {
     HOME, CHAPTER, FRONTLINE, ANALYTICS, PROFILE, MORNING, CHECKOUT, CHAPTER_EDITOR,
-    WEEKLY, VISION, HISTORY, COMPLETE, REMINDERS, SWITCHES, BACKUP, FOCUS_STATS
+    WEEKLY, VISION, HISTORY, COMPLETE, REMINDERS, SWITCHES, BACKUP, FOCUS_STATS,
+    METHODS, DOSSIER, FRONTLINE_AUDIT, DETONATOR, REBOOT
 }
 
 private data class ChapterConfig(
@@ -232,6 +233,7 @@ private fun NovaGlavaApp() {
     var result1 by rememberSaveable { mutableStateOf(prefs.getString("result_1", "Завершувати, а не лише починати") ?: "") }
     var result2 by rememberSaveable { mutableStateOf(prefs.getString("result_2", "Більше руху й енергії") ?: "") }
     var result3 by rememberSaveable { mutableStateOf(prefs.getString("result_3", "Більше часу на Передовій") ?: "") }
+    var dossierBrief by rememberSaveable { mutableStateOf(prefs.getString("dossier_brief", "") ?: "") }
 
     var day by rememberSaveable { mutableIntStateOf(prefs.getInt("day", 1).coerceIn(1, duration)) }
     var mood by rememberSaveable { mutableStateOf(prefs.getString("mood", "Спокійна") ?: "Спокійна") }
@@ -344,7 +346,7 @@ private fun NovaGlavaApp() {
         if (timerSeconds <= 0) timerRunning = false
     }
 
-    BackHandler(enabled = page in listOf(Page.FRONTLINE, Page.MORNING, Page.CHECKOUT, Page.CHAPTER_EDITOR, Page.WEEKLY, Page.VISION, Page.HISTORY, Page.COMPLETE, Page.REMINDERS, Page.SWITCHES, Page.BACKUP, Page.FOCUS_STATS) && configured) {
+    BackHandler(enabled = page in listOf(Page.FRONTLINE, Page.MORNING, Page.CHECKOUT, Page.CHAPTER_EDITOR, Page.WEEKLY, Page.VISION, Page.HISTORY, Page.COMPLETE, Page.REMINDERS, Page.SWITCHES, Page.BACKUP, Page.FOCUS_STATS, Page.METHODS, Page.DOSSIER, Page.FRONTLINE_AUDIT, Page.DETONATOR, Page.REBOOT) && configured) {
         page = Page.HOME
     }
 
@@ -443,7 +445,8 @@ private fun NovaGlavaApp() {
                     onWeekly = { page = Page.WEEKLY },
                     onReminders = { page = Page.REMINDERS },
                     onSwitches = { page = Page.SWITCHES },
-                    onBackup = { page = Page.BACKUP }
+                    onBackup = { page = Page.BACKUP },
+                    onMethods = { page = Page.METHODS }
                 )
 
                 Page.MORNING -> MorningStartScreen(
@@ -453,6 +456,7 @@ private fun NovaGlavaApp() {
                     switchOn = switchOn,
                     switchActions = switchActions,
                     selectedSwitchAction = selectedSwitchAction,
+                    dossierBrief = dossierBrief,
                     onMood = { mood = it },
                     onSelectSwitch = { selectedSwitchAction = it },
                     onSwitch = { switchOn = it },
@@ -616,6 +620,64 @@ private fun NovaGlavaApp() {
                     evidence = evidence,
                     currentDailyMinutes = dailyFrontlineSeconds / 60,
                     onBack = { page = Page.ANALYTICS }
+                )
+
+                Page.METHODS -> MethodsHubScreen(
+                    onBack = { page = Page.PROFILE },
+                    onDossier = { page = Page.DOSSIER },
+                    onFrontlineAudit = { page = Page.FRONTLINE_AUDIT },
+                    onDetonator = { page = Page.DETONATOR },
+                    onReboot = { page = Page.REBOOT },
+                    onVision = { page = Page.VISION }
+                )
+
+                Page.DOSSIER -> DossierScreen(
+                    prefs = prefs,
+                    onBack = { page = Page.METHODS },
+                    onSaved = { brief ->
+                        dossierBrief = brief
+                        page = Page.METHODS
+                    }
+                )
+
+                Page.FRONTLINE_AUDIT -> FrontlineAuditScreen(
+                    prefs = prefs,
+                    onBack = { page = Page.METHODS },
+                    onUseFrontline = { action ->
+                        frontline = action
+                        frontlineTaskTexts[0] = action
+                        prefs.edit()
+                            .putString("chapter_frontline", action)
+                            .putString("frontline_task_0", action)
+                            .apply()
+                        page = Page.FRONTLINE
+                    }
+                )
+
+                Page.DETONATOR -> DesireDetonatorScreen(
+                    prefs = prefs,
+                    onBack = { page = Page.METHODS },
+                    onUseWish = { wish ->
+                        result1 = wish
+                        prefs.edit().putString("result_1", wish).apply()
+                        page = Page.CHAPTER
+                    }
+                )
+
+                Page.REBOOT -> RebootScreen(
+                    prefs = prefs,
+                    onBack = { page = Page.METHODS },
+                    onUseSwitch = { action ->
+                        switchActions[0] = action
+                        selectedSwitchAction = action
+                        switchOn = true
+                        prefs.edit()
+                            .putString("switch_action_0", action)
+                            .putString("selected_switch_action", action)
+                            .putBoolean("switch_on", true)
+                            .apply()
+                        page = Page.HOME
+                    }
                 )
 
                 Page.CHAPTER_EDITOR -> ChapterEditorScreen(
@@ -1076,6 +1138,7 @@ private fun MorningStartScreen(
     switchOn: Boolean,
     switchActions: List<String>,
     selectedSwitchAction: String,
+    dossierBrief: String,
     onMood: (String) -> Unit,
     onSelectSwitch: (String) -> Unit,
     onSwitch: (Boolean) -> Unit,
@@ -1095,6 +1158,17 @@ private fun MorningStartScreen(
                     Text("Ким я є в цій главі", color = LilacStrong, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(8.dp))
                     Text(chapter.identity, fontSize = 19.sp, fontWeight = FontWeight.Bold, lineHeight = 25.sp)
+                }
+            }
+        }
+        if (dossierBrief.isNotBlank()) {
+            item {
+                Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Mint)) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("Вижимка Я 2.0", color = MintDark, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(6.dp))
+                        Text(dossierBrief, color = Ink, fontSize = 13.sp, lineHeight = 19.sp)
+                    }
                 }
             }
         }
@@ -1571,7 +1645,8 @@ private fun ProfileScreen(
     onWeekly: () -> Unit,
     onReminders: () -> Unit,
     onSwitches: () -> Unit,
-    onBackup: () -> Unit
+    onBackup: () -> Unit,
+    onMethods: () -> Unit
 ) {
     LazyColumn(
         modifier = Modifier
@@ -1598,6 +1673,8 @@ private fun ProfileScreen(
         item {
             Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Color.White), border = CardDefaults.outlinedCardBorder()) {
                 Column {
+                    SettingsRow(Icons.Outlined.AutoAwesome, "Метод глави", "Я 2.0 · Передова · Детонатор · Перепрошивка · Фото", onMethods)
+                    HorizontalDivider(color = CardBorder)
                     SettingsRow(Icons.Outlined.Edit, "Налаштувати главу", "Роль, Передова, результати й тривалість", onEditChapter)
                     HorizontalDivider(color = CardBorder)
                     SettingsRow(Icons.Outlined.Tune, "SWITCH-дії", "Власний набір дій проти автопілота", onSwitches)
@@ -1617,7 +1694,7 @@ private fun ProfileScreen(
             }
         }
         item {
-            Text("Версія 0.4.0 · офлайн-first", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, color = Muted, fontSize = 12.sp)
+            Text("Версія 0.5.0 · офлайн-first", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, color = Muted, fontSize = 12.sp)
         }
     }
 }
@@ -1798,14 +1875,26 @@ private fun VisionScreen(texts: MutableList<String>, uris: MutableList<String>, 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, "Назад") }
                 Column {
-                    Text("Vision Board", fontSize = 27.sp, fontWeight = FontWeight.Bold)
-                    Text("Не список бажань. Образ того, як виглядає нормальне життя цієї глави.", color = Muted, fontSize = 12.sp, lineHeight = 17.sp)
+                    Text("Норма нового рівня · Фото", fontSize = 27.sp, fontWeight = FontWeight.Bold)
+                    Text("5 сфер із матеріалів автора: ти всередині бажаного життя. Спокійний, буденний кадр — не предмет сам по собі.", color = Muted, fontSize = 12.sp, lineHeight = 17.sp)
                 }
             }
         }
         items(6) { index ->
+            val sphereNames = listOf("Стосунки", "Простір", "Предмети нового рівня", "Подорожі", "Я у своїй справі", "Свій кадр")
+            val sphereHints = listOf(
+                "Теплий звичайний момент із близькими",
+                "Ти реально живеш або працюєш у цьому просторі",
+                "Головний у кадрі — ти; річ просто давно твоя",
+                "Ти не турист біля пам’ятки, а живеш моментом",
+                "Найважливіший кадр: твоя діяльність у новому масштабі",
+                "Будь-яка інша сцена, яка має стати буденною нормою"
+            )
             Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = if (index % 2 == 0) Mint else Lilac)) {
                 Column(Modifier.padding(14.dp)) {
+                    Text("${index + 1} · ${sphereNames[index]}", fontWeight = FontWeight.Bold, color = if (index % 2 == 0) MintDark else LilacStrong)
+                    Text(sphereHints[index], color = Muted, fontSize = 11.sp)
+                    Spacer(Modifier.height(8.dp))
                     if (uris[index].isNotBlank()) {
                         AndroidView(
                             factory = { ctx -> ImageView(ctx).apply { scaleType = ImageView.ScaleType.CENTER_CROP } },
@@ -1817,8 +1906,8 @@ private fun VisionScreen(texts: MutableList<String>, uris: MutableList<String>, 
                     OutlinedTextField(
                         value = texts[index],
                         onValueChange = { texts[index] = it; onChanged() },
-                        label = { Text("Образ ${index + 1}") },
-                        placeholder = { Text("Напр.: я спокійно завершую головну справу до обіду") },
+                        label = { Text("Опиши сцену") },
+                        placeholder = { Text("Що відбувається, де ти, з ким, що робиш — як звичайний день") },
                         modifier = Modifier.fillMaxWidth(),
                         minLines = 2
                     )
@@ -1828,6 +1917,11 @@ private fun VisionScreen(texts: MutableList<String>, uris: MutableList<String>, 
                             Icon(Icons.Outlined.AddPhotoAlternate, null)
                             Spacer(Modifier.width(6.dp))
                             Text(if (uris[index].isBlank()) "Додати фото" else "Замінити")
+                        }
+                        OutlinedButton(onClick = { copyText(context, "Vision prompt", buildVisionPrompt(index, texts[index])) }) {
+                            Icon(Icons.Outlined.AutoAwesome, null)
+                            Spacer(Modifier.width(4.dp))
+                            Text("Prompt")
                         }
                         if (uris[index].isNotBlank() || texts[index].isNotBlank()) {
                             TextButton(onClick = { uris[index] = ""; texts[index] = ""; onChanged() }) {
