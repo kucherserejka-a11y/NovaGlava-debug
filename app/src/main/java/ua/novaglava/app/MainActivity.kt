@@ -1703,7 +1703,7 @@ private fun ProfileScreen(
             }
         }
         item {
-            Text("Версія 0.7.0 · офлайн-first", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, color = Muted, fontSize = 12.sp)
+            Text("Версія 0.8.0 · офлайн-first", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, color = Muted, fontSize = 12.sp)
         }
     }
 }
