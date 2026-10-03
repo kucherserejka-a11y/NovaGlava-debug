@@ -8,6 +8,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -84,7 +86,7 @@ private val LifeLilacStrong = Color(0xFF8C74C7)
 private val LifePeach = Color(0xFFFFE9D2)
 
 private enum class LifeTab(val label: String) {
-    HERO("Герой"), TODAY("Сьогодні"), WEEK("Тиждень"), HEALTH("Здоров’я"), ADVENTURES("Пригоди")
+    HERO("Герой"), TODAY("Сьогодні"), PROJECTS("Проєкти"), WEEK("Тиждень"), HEALTH("Здоров’я"), ADVENTURES("Пригоди")
 }
 
 private data class WeeklyAction(
@@ -95,7 +97,8 @@ private data class WeeklyAction(
     val minutes: Int,
     val frontline: Boolean,
     val completed: Int,
-    val days: String = ""
+    val days: String = "",
+    val projectId: String = ""
 )
 
 private data class HealthCheckin(
@@ -126,6 +129,7 @@ internal fun LifeSystemScreen(prefs: SharedPreferences, onBack: () -> Unit) {
     var actions by remember { mutableStateOf(loadWeeklyActions(prefs)) }
     var checkins by remember { mutableStateOf(loadHealthCheckins(prefs)) }
     var adventures by remember { mutableStateOf(loadAdventures(prefs)) }
+    var projects by remember { mutableStateOf(loadLifeProjects(prefs)) }
     var xp by remember { mutableIntStateOf(prefs.getInt("life_xp", 0).coerceAtLeast(0)) }
 
     fun saveActions(next: List<WeeklyAction>) {
@@ -135,6 +139,10 @@ internal fun LifeSystemScreen(prefs: SharedPreferences, onBack: () -> Unit) {
     fun saveAdventures(next: List<MiniAdventure>) {
         adventures = next
         persistAdventures(prefs, next)
+    }
+    fun saveProjects(next: List<LifeProject>) {
+        projects = next
+        persistLifeProjects(prefs, next)
     }
     fun addXp(points: Int) {
         xp = (xp + points).coerceAtLeast(0)
@@ -149,7 +157,7 @@ internal fun LifeSystemScreen(prefs: SharedPreferences, onBack: () -> Unit) {
             IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, "Назад") }
             Column(Modifier.weight(1f)) {
                 Text("Моя система", fontSize = 25.sp, fontWeight = FontWeight.Bold, color = LifeInk)
-                Text("Герой · сфери · тиждень · дії", fontSize = 11.sp, color = LifeMuted)
+                Text("Я " + currentSelfVersion(prefs) + " · проєкти · тиждень · дії", fontSize = 11.sp, color = LifeMuted)
             }
             val level = xp / 100 + 1
             Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = LifeLilac)) {
@@ -162,7 +170,10 @@ internal fun LifeSystemScreen(prefs: SharedPreferences, onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
                     LifeTab.values().forEach { item ->
                         FilterChip(
                             selected = tab == item,
@@ -201,10 +212,33 @@ internal fun LifeSystemScreen(prefs: SharedPreferences, onBack: () -> Unit) {
                         }
                     }
                 )
+                LifeTab.PROJECTS -> projectItems(
+                    scope = this,
+                    prefs = prefs,
+                    projects = projects,
+                    onChanged = ::saveProjects,
+                    onCreateRoutine = { project ->
+                        val action = WeeklyAction(
+                            id = "project_action_" + project.id + "_" + System.currentTimeMillis(),
+                            sphere = project.name,
+                            title = "Працювати над " + project.name,
+                            target = projectCadenceTarget(project),
+                            minutes = project.minutes,
+                            frontline = project.frontline,
+                            completed = 0,
+                            days = projectDays(project),
+                            projectId = project.id
+                        )
+                        saveActions(actions + action)
+                        tabName = LifeTab.WEEK.name
+                        prefs.edit().putString("life_tab", LifeTab.WEEK.name).apply()
+                    }
+                )
                 LifeTab.WEEK -> weekItems(
                     prefs = prefs,
                     actions = actions,
                     adventures = adventures,
+                    projects = projects,
                     onActionsChanged = ::saveActions,
                     onAdventuresChanged = ::saveAdventures
                 )
@@ -341,8 +375,13 @@ private fun HeroCard(prefs: SharedPreferences, xp: Int, latest: HealthCheckin?) 
                 }
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("Мій герой", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = LifeInk)
+                    Text("Мій герой · Я " + currentSelfVersion(prefs), fontSize = 22.sp, fontWeight = FontWeight.Bold, color = LifeInk)
                     Text("Рівень $level · $xp XP", color = LifeMintDark, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Після завершення глави → Я 2." + (currentSelfMinor(prefs) + 1),
+                        color = LifeMuted,
+                        fontSize = 9.sp
+                    )
                     Spacer(Modifier.height(8.dp))
                     LinearProgressIndicator(
                         progress = { levelProgress },
@@ -501,6 +540,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.weekItems(
     prefs: SharedPreferences,
     actions: List<WeeklyAction>,
     adventures: List<MiniAdventure>,
+    projects: List<LifeProject>,
     onActionsChanged: (List<WeeklyAction>) -> Unit,
     onAdventuresChanged: (List<MiniAdventure>) -> Unit
 ) {
@@ -533,7 +573,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.weekItems(
             onDelete = { onActionsChanged(actions.filterNot { it.id == action.id }) }
         )
     }
-    item { AddWeeklyActionCard { action -> onActionsChanged(actions + action) } }
+    item { AddWeeklyActionCard(projects = projects, prefs = prefs) { action -> onActionsChanged(actions + action) } }
 }
 
 @Composable
@@ -577,7 +617,7 @@ private fun WeekActionEditor(action: WeeklyAction, onUpdate: (WeeklyAction) -> U
 }
 
 @Composable
-private fun AddWeeklyActionCard(onAdd: (WeeklyAction) -> Unit) {
+private fun AddWeeklyActionCard(projects: List<LifeProject>, prefs: SharedPreferences, onAdd: (WeeklyAction) -> Unit) {
     var title by rememberSaveable { mutableStateOf("") }
     var sphere by rememberSaveable { mutableStateOf("KDP") }
     var customSphere by rememberSaveable { mutableStateOf("") }
@@ -585,6 +625,7 @@ private fun AddWeeklyActionCard(onAdd: (WeeklyAction) -> Unit) {
     var minutes by rememberSaveable { mutableIntStateOf(60) }
     var frontline by rememberSaveable { mutableStateOf(false) }
     var days by rememberSaveable { mutableStateOf("") }
+    var selectedProjectId by rememberSaveable { mutableStateOf("") }
     val sphereOptions = listOf("KDP", "PFU", "Здоров’я", "Собака", "Особисте", "Інше")
     val minuteOptions = listOf(15, 30, 45, 60, 90, 120)
 
@@ -595,6 +636,30 @@ private fun AddWeeklyActionCard(onAdd: (WeeklyAction) -> Unit) {
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Наприклад: зробити книжку") }, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(8.dp))
+            val activeProjects = projects.filter { projectIsAvailable(it, currentSelfMinor(prefs)) }
+            if (activeProjects.isNotEmpty()) {
+                Text("Проєкт — необов’язково", fontWeight = FontWeight.SemiBold)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                ) {
+                    FilterChip(
+                        selected = selectedProjectId.isBlank(),
+                        onClick = { selectedProjectId = "" },
+                        label = { Text("Без проєкту", fontSize = 10.sp) }
+                    )
+                    activeProjects.forEach { project ->
+                        FilterChip(
+                            selected = selectedProjectId == project.id,
+                            onClick = {
+                                selectedProjectId = project.id
+                                sphere = project.name
+                            },
+                            label = { Text(project.name, fontSize = 10.sp) }
+                        )
+                    }
+                }
+            }
             Text("Сфера", fontWeight = FontWeight.SemiBold)
             Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.fillMaxWidth()) {
                 sphereOptions.take(3).forEach { value -> FilterChip(selected = sphere == value, onClick = { sphere = value }, label = { Text(value, fontSize = 10.sp) }) }
@@ -631,8 +696,21 @@ private fun AddWeeklyActionCard(onAdd: (WeeklyAction) -> Unit) {
             }
             Button(
                 onClick = {
-                    val finalSphere = if (sphere == "Інше") customSphere.trim().ifBlank { "Інше" } else sphere
-                    onAdd(WeeklyAction("a" + System.currentTimeMillis(), finalSphere, title.trim(), target, minutes, frontline, 0, days))
+                    val selectedProject = projects.firstOrNull { it.id == selectedProjectId }
+                    val finalSphere = selectedProject?.name ?: if (sphere == "Інше") customSphere.trim().ifBlank { "Інше" } else sphere
+                    onAdd(
+                        WeeklyAction(
+                            id = "a" + System.currentTimeMillis(),
+                            sphere = finalSphere,
+                            title = title.trim(),
+                            target = target,
+                            minutes = minutes,
+                            frontline = frontline,
+                            completed = 0,
+                            days = days,
+                            projectId = selectedProject?.id ?: ""
+                        )
+                    )
                     title = ""
                 },
                 enabled = title.isNotBlank(),
@@ -876,7 +954,15 @@ private fun loadWeeklyActions(prefs: SharedPreferences): List<WeeklyAction> {
                     minutes = o.optInt("minutes", 30).coerceAtLeast(0),
                     frontline = o.optBoolean("frontline", false),
                     completed = o.optInt("completed", 0).coerceAtLeast(0),
-                    days = o.optString("days", "")
+                    days = o.optString("days", ""),
+                    projectId = o.optString(
+                        "projectId",
+                        when (o.optString("sphere", "")) {
+                            "KDP" -> "project_kdp"
+                            "PFU" -> "project_pfu"
+                            else -> ""
+                        }
+                    )
                 )
             }
         } catch (_: Exception) {}
@@ -886,8 +972,8 @@ private fun loadWeeklyActions(prefs: SharedPreferences): List<WeeklyAction> {
         WeeklyAction("health_keto", "Здоров’я", "Кето-день", 7, 0, false, 0, "1,2,3,4,5,6,7"),
         WeeklyAction("health_if", "Здоров’я", "Інтервальне голодування", 7, 0, false, 0, "1,2,3,4,5,6,7"),
         WeeklyAction("dog_walk", "Собака", "Довша прогулянка з собакою", 4, 45, false, 0, "2,4,6,7"),
-        WeeklyAction("kdp_books", "KDP", "Зробити книжку", 2, 120, true, 0, "2,5"),
-        WeeklyAction("pfu_publish", "PFU", "Опублікувати корисний матеріал / локації", 3, 60, true, 0, "1,3,6")
+        WeeklyAction("kdp_books", "KDP", "Зробити книжку", 2, 120, true, 0, "2,5", "project_kdp"),
+        WeeklyAction("pfu_publish", "PFU", "Опублікувати корисний матеріал / локації", 3, 60, true, 0, "1,3,6", "project_pfu")
     )
     persistWeeklyActions(prefs, defaults)
     return defaults
@@ -898,7 +984,7 @@ private fun persistWeeklyActions(prefs: SharedPreferences, items: List<WeeklyAct
     items.forEach { a ->
         arr.put(JSONObject().apply {
             put("id", a.id); put("sphere", a.sphere); put("title", a.title); put("target", a.target)
-            put("minutes", a.minutes); put("frontline", a.frontline); put("completed", a.completed); put("days", a.days)
+            put("minutes", a.minutes); put("frontline", a.frontline); put("completed", a.completed); put("days", a.days); put("projectId", a.projectId)
         })
     }
     prefs.edit().putString("life_week_actions", arr.toString()).apply()
