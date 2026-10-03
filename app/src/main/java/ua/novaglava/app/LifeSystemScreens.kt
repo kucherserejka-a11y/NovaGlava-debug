@@ -94,7 +94,8 @@ private data class WeeklyAction(
     val target: Int,
     val minutes: Int,
     val frontline: Boolean,
-    val completed: Int
+    val completed: Int,
+    val days: String = ""
 )
 
 private data class HealthCheckin(
@@ -210,6 +211,17 @@ internal fun LifeSystemScreen(prefs: SharedPreferences, onBack: () -> Unit) {
                 LifeTab.HEALTH -> healthItems(
                     prefs = prefs,
                     checkins = checkins,
+                    onWalkCompleted = { steps, minutes ->
+                        val index = actions.indexOfFirst { it.id == "dog_walk" || (it.sphere == "Собака" && it.title.contains("прогулян", ignoreCase = true)) }
+                        if (index >= 0 && actions[index].completed < actions[index].target) {
+                            val a = actions[index]
+                            val next = actions.toMutableList()
+                            next[index] = a.copy(completed = a.completed + 1)
+                            saveActions(next)
+                            addXp(10)
+                        }
+                        prefs.edit().putInt("life_last_walk_steps", steps).putInt("life_last_walk_minutes", minutes).apply()
+                    },
                     onSaved = { item ->
                         checkins = (listOf(item) + checkins).take(120)
                         persistHealthCheckins(prefs, checkins)
@@ -410,7 +422,10 @@ private fun androidx.compose.foundation.lazy.LazyListScope.todayItems(
     onAdventureDone: (String) -> Unit
 ) {
     item { LifeSectionTitle("Сьогодні", "Не весь тиждень одразу. Обери одну дію й закрий її.") }
-    val active = actions.filter { it.completed < it.target }
+    val weekday = currentIsoWeekday()
+    val remaining = actions.filter { it.completed < it.target }
+    val scheduledToday = remaining.filter { actionOccursToday(it.days, weekday) }
+    val active = if (scheduledToday.isNotEmpty()) scheduledToday else remaining
     if (active.isEmpty()) {
         item { EmptyLifeCard("Усі заплановані дії тижня вже виконані. Можеш додати нову у вкладці «Тиждень».") }
     } else {
@@ -547,6 +562,11 @@ private fun WeekActionEditor(action: WeeklyAction, onUpdate: (WeeklyAction) -> U
                 Text("Час однієї дії", modifier = Modifier.weight(1f), color = LifeMuted, fontSize = 12.sp)
                 Text(action.minutes.toString() + " хв", fontWeight = FontWeight.SemiBold)
             }
+            Text("Дні", color = LifeMuted, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
+            WeekdaySelector(
+                selected = action.days,
+                onChanged = { onUpdate(action.copy(days = it)) }
+            )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Передова", modifier = Modifier.weight(1f), color = LifeMuted)
                 Switch(checked = action.frontline, onCheckedChange = { onUpdate(action.copy(frontline = it)) })
@@ -564,6 +584,7 @@ private fun AddWeeklyActionCard(onAdd: (WeeklyAction) -> Unit) {
     var target by rememberSaveable { mutableIntStateOf(1) }
     var minutes by rememberSaveable { mutableIntStateOf(60) }
     var frontline by rememberSaveable { mutableStateOf(false) }
+    var days by rememberSaveable { mutableStateOf("") }
     val sphereOptions = listOf("KDP", "PFU", "Здоров’я", "Собака", "Особисте", "Інше")
     val minuteOptions = listOf(15, 30, 45, 60, 90, 120)
 
@@ -598,6 +619,9 @@ private fun AddWeeklyActionCard(onAdd: (WeeklyAction) -> Unit) {
                     FilterChip(selected = minutes == value, onClick = { minutes = value }, label = { Text(label, fontSize = 9.sp) })
                 }
             }
+            Text("Дні виконання", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 6.dp))
+            Text("Не обирай нічого, якщо дія може бути в будь-який день.", color = LifeMuted, fontSize = 10.sp)
+            WeekdaySelector(selected = days, onChanged = { days = it })
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Це Передова", fontWeight = FontWeight.SemiBold)
@@ -608,7 +632,7 @@ private fun AddWeeklyActionCard(onAdd: (WeeklyAction) -> Unit) {
             Button(
                 onClick = {
                     val finalSphere = if (sphere == "Інше") customSphere.trim().ifBlank { "Інше" } else sphere
-                    onAdd(WeeklyAction("a" + System.currentTimeMillis(), finalSphere, title.trim(), target, minutes, frontline, 0))
+                    onAdd(WeeklyAction("a" + System.currentTimeMillis(), finalSphere, title.trim(), target, minutes, frontline, 0, days))
                     title = ""
                 },
                 enabled = title.isNotBlank(),
@@ -627,8 +651,18 @@ private fun AddWeeklyActionCard(onAdd: (WeeklyAction) -> Unit) {
 private fun androidx.compose.foundation.lazy.LazyListScope.healthItems(
     prefs: SharedPreferences,
     checkins: List<HealthCheckin>,
+    onWalkCompleted: (Int, Int) -> Unit,
     onSaved: (HealthCheckin) -> Unit
 ) {
+    item {
+        HealthConnectAndWalkCard(
+            prefs = prefs,
+            onStepsUpdated = { prefs.edit().putInt("life_auto_steps_today", it).apply() },
+            onWalkCompleted = onWalkCompleted
+        )
+    }
+    item { HealthTrendCard(checkins) }
+    item { AchievementCard(prefs, checkins) }
     item { HealthCheckinCard(prefs, onSaved) }
     item { Text("Історія", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = LifeInk) }
     if (checkins.isEmpty()) {
@@ -659,7 +693,7 @@ private fun HealthCheckinCard(prefs: SharedPreferences, onSaved: (HealthCheckin)
     var keto by rememberSaveable { mutableStateOf("Так") }
     var fastingProtocol by rememberSaveable { mutableStateOf(prefs.getString("life_fasting_protocol", "16/8") ?: "16/8") }
     var fastingDone by rememberSaveable { mutableStateOf(false) }
-    var steps by rememberSaveable { mutableStateOf("") }
+    var steps by rememberSaveable { mutableStateOf(prefs.getInt("life_auto_steps_today", 0).takeIf { it > 0 }?.toString() ?: "") }
     var note by rememberSaveable { mutableStateOf("") }
 
     Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = LifeMint)) {
@@ -715,11 +749,11 @@ private fun HealthCheckinCard(prefs: SharedPreferences, onSaved: (HealthCheckin)
             OutlinedTextField(
                 value = steps,
                 onValueChange = { steps = it.filter { c -> c.isDigit() }.take(6) },
-                label = { Text("Кроки сьогодні — поки вручну") },
+                label = { Text("Кроки сьогодні") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth()
             )
-            Text("Автокроки через Health Connect заплановані на v0.7.", color = LifeMuted, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
+            Text("Якщо Health Connect підключений, поле можна заповнити автоматично; ручний ввід теж залишається.", color = LifeMuted, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
             OutlinedTextField(value = note, onValueChange = { note = it }, label = { Text("Нотатка про стан") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
             Spacer(Modifier.height(10.dp))
             Button(
@@ -841,18 +875,19 @@ private fun loadWeeklyActions(prefs: SharedPreferences): List<WeeklyAction> {
                     target = o.optInt("target", 1).coerceAtLeast(1),
                     minutes = o.optInt("minutes", 30).coerceAtLeast(0),
                     frontline = o.optBoolean("frontline", false),
-                    completed = o.optInt("completed", 0).coerceAtLeast(0)
+                    completed = o.optInt("completed", 0).coerceAtLeast(0),
+                    days = o.optString("days", "")
                 )
             }
         } catch (_: Exception) {}
     }
     val defaults = listOf(
-        WeeklyAction("health_sport", "Здоров’я", "Спорт / тренування", 3, 30, false, 0),
-        WeeklyAction("health_keto", "Здоров’я", "Кето-день", 7, 0, false, 0),
-        WeeklyAction("health_if", "Здоров’я", "Інтервальне голодування", 7, 0, false, 0),
-        WeeklyAction("dog_walk", "Собака", "Довша прогулянка з собакою", 4, 45, false, 0),
-        WeeklyAction("kdp_books", "KDP", "Зробити книжку", 2, 120, true, 0),
-        WeeklyAction("pfu_publish", "PFU", "Опублікувати корисний матеріал / локації", 3, 60, true, 0)
+        WeeklyAction("health_sport", "Здоров’я", "Спорт / тренування", 3, 30, false, 0, "1,3,5"),
+        WeeklyAction("health_keto", "Здоров’я", "Кето-день", 7, 0, false, 0, "1,2,3,4,5,6,7"),
+        WeeklyAction("health_if", "Здоров’я", "Інтервальне голодування", 7, 0, false, 0, "1,2,3,4,5,6,7"),
+        WeeklyAction("dog_walk", "Собака", "Довша прогулянка з собакою", 4, 45, false, 0, "2,4,6,7"),
+        WeeklyAction("kdp_books", "KDP", "Зробити книжку", 2, 120, true, 0, "2,5"),
+        WeeklyAction("pfu_publish", "PFU", "Опублікувати корисний матеріал / локації", 3, 60, true, 0, "1,3,6")
     )
     persistWeeklyActions(prefs, defaults)
     return defaults
@@ -863,7 +898,7 @@ private fun persistWeeklyActions(prefs: SharedPreferences, items: List<WeeklyAct
     items.forEach { a ->
         arr.put(JSONObject().apply {
             put("id", a.id); put("sphere", a.sphere); put("title", a.title); put("target", a.target)
-            put("minutes", a.minutes); put("frontline", a.frontline); put("completed", a.completed)
+            put("minutes", a.minutes); put("frontline", a.frontline); put("completed", a.completed); put("days", a.days)
         })
     }
     prefs.edit().putString("life_week_actions", arr.toString()).apply()
@@ -935,6 +970,120 @@ private fun appendWeekHistory(prefs: SharedPreferences, actions: List<WeeklyActi
         put("frontlinePlannedMinutes", actions.filter { it.frontline }.sumOf { it.target * it.minutes })
     })
     prefs.edit().putString("life_week_history", arr.toString()).apply()
+}
+
+
+@Composable
+private fun WeekdaySelector(selected: String, onChanged: (String) -> Unit) {
+    val selectedSet = selected.split(",").filter { it.isNotBlank() }.toMutableSet()
+    val labels = listOf(1 to "Пн", 2 to "Вт", 3 to "Ср", 4 to "Чт", 5 to "Пт", 6 to "Сб", 7 to "Нд")
+    Row(horizontalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.fillMaxWidth()) {
+        labels.forEach { (day, label) ->
+            val key = day.toString()
+            FilterChip(
+                selected = selectedSet.contains(key),
+                onClick = {
+                    val next = selectedSet.toMutableSet()
+                    if (next.contains(key)) next.remove(key) else next.add(key)
+                    onChanged(next.mapNotNull { it.toIntOrNull() }.sorted().joinToString(","))
+                },
+                label = { Text(label, fontSize = 9.sp) }
+            )
+        }
+    }
+}
+
+private fun currentIsoWeekday(): Int {
+    val day = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK)
+    return when (day) {
+        java.util.Calendar.MONDAY -> 1
+        java.util.Calendar.TUESDAY -> 2
+        java.util.Calendar.WEDNESDAY -> 3
+        java.util.Calendar.THURSDAY -> 4
+        java.util.Calendar.FRIDAY -> 5
+        java.util.Calendar.SATURDAY -> 6
+        else -> 7
+    }
+}
+
+private fun actionOccursToday(days: String, weekday: Int): Boolean {
+    if (days.isBlank()) return true
+    return days.split(",").mapNotNull { it.toIntOrNull() }.contains(weekday)
+}
+
+@Composable
+private fun HealthTrendCard(checkins: List<HealthCheckin>) {
+    val withWeight = checkins.filter { it.weight.toDoubleOrNull() != null }.take(8).reversed()
+    Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Color.White), border = CardDefaults.outlinedCardBorder()) {
+        Column(Modifier.padding(16.dp)) {
+            Text("Динаміка героя", fontSize = 19.sp, fontWeight = FontWeight.Bold, color = LifeInk)
+            if (checkins.isEmpty()) {
+                Text("Збережи кілька check-in, щоб побачити зміни ваги, енергії та самопочуття.", color = LifeMuted, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
+            } else {
+                val latest = checkins.first()
+                val oldest = checkins.last()
+                val latestWeight = latest.weight.toDoubleOrNull()
+                val oldWeight = oldest.weight.toDoubleOrNull()
+                val diff = if (latestWeight != null && oldWeight != null) latestWeight - oldWeight else null
+                Text(
+                    "Вага: " + (latest.weight.ifBlank { "—" }) + " кг" + (diff?.let { " · " + String.format(Locale.US, "%+.1f", it) + " кг" } ?: ""),
+                    color = LifeInk,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+                Text("Енергія ${latest.energy}/10 · самопочуття ${latest.wellbeing}/10", color = LifeMuted, fontSize = 11.sp)
+                if (withWeight.size >= 2) {
+                    Spacer(Modifier.height(10.dp))
+                    val values = withWeight.mapNotNull { it.weight.toDoubleOrNull() }
+                    val min = values.minOrNull() ?: 0.0
+                    val max = values.maxOrNull() ?: min + 1.0
+                    withWeight.forEach { c ->
+                        val v = c.weight.toDoubleOrNull() ?: return@forEach
+                        val p = if (max == min) 1f else ((v - min) / (max - min)).toFloat().coerceIn(0.08f, 1f)
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
+                            Text(lifeDate(c.at).take(5), modifier = Modifier.width(42.dp), color = LifeMuted, fontSize = 9.sp)
+                            LinearProgressIndicator(progress = { p }, modifier = Modifier.weight(1f).height(7.dp), color = LifeMintDark)
+                            Text(String.format(Locale.US, "%.1f", v), modifier = Modifier.width(46.dp), textAlign = TextAlign.End, fontSize = 10.sp)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AchievementCard(prefs: SharedPreferences, checkins: List<HealthCheckin>) {
+    val totalSteps = checkins.sumOf { it.steps.toLong() } + prefs.getInt("life_auto_steps_today", 0)
+    val ketoDays = checkins.count { it.keto == "Так" }
+    val fastingDays = checkins.count { it.fastingDone }
+    val walkRaw = prefs.getString("dog_walk_history", "[]") ?: "[]"
+    val walkCount = try { JSONArray(walkRaw).length() } catch (_: Exception) { 0 }
+    val achievements = listOf(
+        Triple("Перші 10 000 кроків", totalSteps >= 10000, "Рух"),
+        Triple("7 кето-днів", ketoDays >= 7, "Харчування"),
+        Triple("7 IF-днів", fastingDays >= 7, "Режим"),
+        Triple("5 прогулянок з собакою", walkCount >= 5, "Собака")
+    )
+    Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = LifeLilac)) {
+        Column(Modifier.padding(16.dp)) {
+            Text("Досягнення", fontSize = 19.sp, fontWeight = FontWeight.Bold, color = LifeInk)
+            achievements.forEach { (title, unlocked, category) ->
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 9.dp)) {
+                    Box(
+                        modifier = Modifier.size(34.dp).clip(CircleShape).background(if (unlocked) LifeMint else Color.White.copy(alpha = 0.7f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(if (unlocked) "✓" else "○", color = if (unlocked) LifeMintDark else LifeMuted, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.width(9.dp))
+                    Column {
+                        Text(title, fontWeight = if (unlocked) FontWeight.Bold else FontWeight.Normal, color = LifeInk)
+                        Text(category, color = LifeMuted, fontSize = 9.sp)
+                    }
+                }
+            }
+        }
+    }
 }
 
 private fun lifeNumberInput(raw: String): String {
