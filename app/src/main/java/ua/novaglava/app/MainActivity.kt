@@ -149,7 +149,7 @@ private val CardBorder = Color(0xFFE8ECE7)
 private enum class Page {
     HOME, CHAPTER, FRONTLINE, ANALYTICS, PROFILE, MORNING, CHECKOUT, CHAPTER_EDITOR,
     WEEKLY, VISION, HISTORY, COMPLETE, REMINDERS, SWITCHES, BACKUP, FOCUS_STATS,
-    METHODS, DOSSIER, FRONTLINE_AUDIT, DETONATOR, REBOOT
+    METHODS, DOSSIER, FRONTLINE_AUDIT, DETONATOR, REBOOT, LIFE_SYSTEM
 }
 
 private data class ChapterConfig(
@@ -346,7 +346,7 @@ private fun NovaGlavaApp() {
         if (timerSeconds <= 0) timerRunning = false
     }
 
-    BackHandler(enabled = page in listOf(Page.FRONTLINE, Page.MORNING, Page.CHECKOUT, Page.CHAPTER_EDITOR, Page.WEEKLY, Page.VISION, Page.HISTORY, Page.COMPLETE, Page.REMINDERS, Page.SWITCHES, Page.BACKUP, Page.FOCUS_STATS, Page.METHODS, Page.DOSSIER, Page.FRONTLINE_AUDIT, Page.DETONATOR, Page.REBOOT) && configured) {
+    BackHandler(enabled = page in listOf(Page.FRONTLINE, Page.MORNING, Page.CHECKOUT, Page.CHAPTER_EDITOR, Page.WEEKLY, Page.VISION, Page.HISTORY, Page.COMPLETE, Page.REMINDERS, Page.SWITCHES, Page.BACKUP, Page.FOCUS_STATS, Page.METHODS, Page.DOSSIER, Page.FRONTLINE_AUDIT, Page.DETONATOR, Page.REBOOT, Page.LIFE_SYSTEM) && configured) {
         page = Page.HOME
     }
 
@@ -446,7 +446,8 @@ private fun NovaGlavaApp() {
                     onReminders = { page = Page.REMINDERS },
                     onSwitches = { page = Page.SWITCHES },
                     onBackup = { page = Page.BACKUP },
-                    onMethods = { page = Page.METHODS }
+                    onMethods = { page = Page.METHODS },
+                    onLifeSystem = { page = Page.LIFE_SYSTEM }
                 )
 
                 Page.MORNING -> MorningStartScreen(
@@ -620,6 +621,11 @@ private fun NovaGlavaApp() {
                     evidence = evidence,
                     currentDailyMinutes = dailyFrontlineSeconds / 60,
                     onBack = { page = Page.ANALYTICS }
+                )
+
+                Page.LIFE_SYSTEM -> LifeSystemScreen(
+                    prefs = prefs,
+                    onBack = { page = Page.PROFILE }
                 )
 
                 Page.METHODS -> MethodsHubScreen(
@@ -1646,7 +1652,8 @@ private fun ProfileScreen(
     onReminders: () -> Unit,
     onSwitches: () -> Unit,
     onBackup: () -> Unit,
-    onMethods: () -> Unit
+    onMethods: () -> Unit,
+    onLifeSystem: () -> Unit
 ) {
     LazyColumn(
         modifier = Modifier
@@ -1673,6 +1680,8 @@ private fun ProfileScreen(
         item {
             Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Color.White), border = CardDefaults.outlinedCardBorder()) {
                 Column {
+                    SettingsRow(Icons.Outlined.Spa, "Моя система", "Герой · здоров’я · KDP/PFU · тиждень · міні-пригоди", onLifeSystem)
+                    HorizontalDivider(color = CardBorder)
                     SettingsRow(Icons.Outlined.AutoAwesome, "Метод глави", "Я 2.0 · Передова · Детонатор · Перепрошивка · Фото", onMethods)
                     HorizontalDivider(color = CardBorder)
                     SettingsRow(Icons.Outlined.Edit, "Налаштувати главу", "Роль, Передова, результати й тривалість", onEditChapter)
@@ -1694,7 +1703,7 @@ private fun ProfileScreen(
             }
         }
         item {
-            Text("Версія 0.5.0 · офлайн-first", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, color = Muted, fontSize = 12.sp)
+            Text("Версія 0.6.0 · офлайн-first", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, color = Muted, fontSize = 12.sp)
         }
     }
 }
