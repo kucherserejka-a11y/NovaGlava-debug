@@ -387,6 +387,7 @@ private fun NovaGlavaApp() {
 
                 Page.CHAPTER -> ChapterScreen(
                     chapter = chapter,
+                    selfVersion = currentSelfVersion(prefs),
                     day = day,
                     switchOn = switchOn,
                     dayStarted = dayStarted,
@@ -1239,6 +1240,7 @@ private fun MorningStartScreen(
 @Composable
 private fun ChapterScreen(
     chapter: ChapterConfig,
+    selfVersion: String,
     day: Int,
     switchOn: Boolean,
     dayStarted: Boolean,
@@ -1261,7 +1263,7 @@ private fun ChapterScreen(
                 IconButton(onClick = onEdit) { Icon(Icons.Outlined.Edit, "Редагувати") }
             }
         }
-        item { SeasonCard(chapter = chapter, day = day, onClick = {}) }
+        item { SeasonCard(chapter = chapter, selfVersion = selfVersion, day = day, onClick = {}) }
         item {
             Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Color.White), border = CardDefaults.outlinedCardBorder()) {
                 Column(Modifier.padding(18.dp)) {
