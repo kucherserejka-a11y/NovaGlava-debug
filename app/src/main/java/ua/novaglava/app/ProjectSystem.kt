@@ -210,6 +210,17 @@ internal fun snapshotProjectWeek(prefs: SharedPreferences) {
     prefs.edit().putString("project_week_history", arr.toString()).apply()
 }
 
+internal fun resetWeeklyActionsForNewChapter(prefs: SharedPreferences) {
+    val raw = prefs.getString("life_week_actions", "[]") ?: "[]"
+    try {
+        val arr = JSONArray(raw)
+        for (i in 0 until arr.length()) {
+            arr.getJSONObject(i).put("completed", 0)
+        }
+        prefs.edit().putString("life_week_actions", arr.toString()).apply()
+    } catch (_: Exception) {}
+}
+
 internal fun snapshotProjectsForCompletedChapter(prefs: SharedPreferences, chapterTitle: String) {
     val currentMinor = currentSelfMinor(prefs)
     val projects = loadLifeProjects(prefs)
@@ -587,7 +598,7 @@ private fun ProjectCard(
             if (!doneProject) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (paused) {
-                        OutlinedButton(onClick = { onUpdate(project.copy(status = "ACTIVE")) }, modifier = Modifier.weight(1f)) { Text("Продовжити") }
+                        OutlinedButton(onClick = { onUpdate(project.copy(status = "ACTIVE", startMinor = if (project.startMinor > currentMinor) currentMinor else project.startMinor)) }, modifier = Modifier.weight(1f)) { Text("Продовжити") }
                     } else {
                         OutlinedButton(onClick = { onUpdate(project.copy(status = "PAUSED")) }, modifier = Modifier.weight(1f)) { Text("Пауза") }
                     }
