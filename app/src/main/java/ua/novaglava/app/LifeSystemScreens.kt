@@ -130,6 +130,7 @@ internal fun LifeSystemScreen(prefs: SharedPreferences, onBack: () -> Unit) {
     var checkins by remember { mutableStateOf(loadHealthCheckins(prefs)) }
     var adventures by remember { mutableStateOf(loadAdventures(prefs)) }
     var projects by remember { mutableStateOf(loadLifeProjects(prefs)) }
+    var projectStages by remember { mutableStateOf(loadProjectStages(prefs)) }
     var xp by remember { mutableIntStateOf(prefs.getInt("life_xp", 0).coerceAtLeast(0)) }
 
     fun saveActions(next: List<WeeklyAction>) {
@@ -143,6 +144,10 @@ internal fun LifeSystemScreen(prefs: SharedPreferences, onBack: () -> Unit) {
     fun saveProjects(next: List<LifeProject>) {
         projects = next
         persistLifeProjects(prefs, next)
+    }
+    fun saveProjectStages(next: List<ProjectStage>) {
+        projectStages = next
+        persistProjectStages(prefs, next)
     }
     fun addXp(points: Int) {
         xp = (xp + points).coerceAtLeast(0)
@@ -216,7 +221,9 @@ internal fun LifeSystemScreen(prefs: SharedPreferences, onBack: () -> Unit) {
                     scope = this,
                     prefs = prefs,
                     projects = projects,
+                    stages = projectStages,
                     onChanged = ::saveProjects,
+                    onStagesChanged = ::saveProjectStages,
                     onCreateRoutine = { project ->
                         val action = WeeklyAction(
                             id = "project_action_" + project.id + "_" + System.currentTimeMillis(),
@@ -557,6 +564,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.weekItems(
                 OutlinedButton(
                     onClick = {
                         appendWeekHistory(prefs, actions)
+                        snapshotProjectWeek(prefs)
                         onActionsChanged(actions.map { it.copy(completed = 0) })
                         onAdventuresChanged(adventures.map { it.copy(done = false) })
                         prefs.edit().putLong("life_week_started", System.currentTimeMillis()).apply()
