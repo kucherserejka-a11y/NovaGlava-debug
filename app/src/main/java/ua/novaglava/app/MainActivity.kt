@@ -366,6 +366,7 @@ private fun NovaGlavaApp() {
             when (page) {
                 Page.HOME -> HomeScreen(
                     chapter = chapter,
+                    selfVersion = currentSelfVersion(prefs),
                     day = day,
                     mood = mood,
                     switchOn = switchOn,
@@ -527,6 +528,7 @@ private fun NovaGlavaApp() {
                     chapter = chapter,
                     evidence = evidence,
                     onArchive = {
+                        snapshotProjectsForCompletedChapter(prefs, chapter.title)
                         val archive = ChapterArchive(
                             title = chapter.title,
                             theme = chapter.theme,
@@ -537,6 +539,7 @@ private fun NovaGlavaApp() {
                         )
                         archives.add(0, archive)
                         persistArchives(prefs, archives)
+                        resetWeeklyActionsForNewChapter(prefs)
                         evidence.clear()
                         persistEvidence(prefs, evidence)
                         for (i in visionTexts.indices) { visionTexts[i] = ""; visionUris[i] = "" }
@@ -772,6 +775,7 @@ private fun persistArchives(prefs: android.content.SharedPreferences, entries: L
 @Composable
 private fun HomeScreen(
     chapter: ChapterConfig,
+    selfVersion: String,
     day: Int,
     mood: String,
     switchOn: Boolean,
@@ -794,7 +798,7 @@ private fun HomeScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item { AppHeader() }
-        item { SeasonCard(chapter = chapter, day = day, onClick = onChapter) }
+        item { SeasonCard(chapter = chapter, selfVersion = selfVersion, day = day, onClick = onChapter) }
         item {
             MorningStatusCard(
                 dayStarted = dayStarted,
@@ -858,7 +862,7 @@ private fun AppHeader() {
 }
 
 @Composable
-private fun SeasonCard(chapter: ChapterConfig, day: Int, onClick: () -> Unit) {
+private fun SeasonCard(chapter: ChapterConfig, selfVersion: String, day: Int, onClick: () -> Unit) {
     val progress = day / chapter.duration.toFloat()
     Card(
         modifier = Modifier
@@ -925,8 +929,8 @@ private fun SeasonCard(chapter: ChapterConfig, day: Int, onClick: () -> Unit) {
                     Icon(Icons.Outlined.LocalFlorist, null, tint = MintDark, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
                     Column {
-                        Text("Сезон", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = Ink)
-                        Text("${chapter.duration} днів", fontSize = 11.sp, color = Muted)
+                        Text("Я " + selfVersion, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = Ink)
+                        Text("Сезон · ${chapter.duration} днів", fontSize = 11.sp, color = Muted)
                     }
                 }
             }
@@ -1703,7 +1707,7 @@ private fun ProfileScreen(
             }
         }
         item {
-            Text("Версія 0.8.0 · офлайн-first", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, color = Muted, fontSize = 12.sp)
+            Text("Версія 0.9.0 · офлайн-first", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, color = Muted, fontSize = 12.sp)
         }
     }
 }
